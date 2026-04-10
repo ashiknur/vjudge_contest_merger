@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "VJudge Rank Extractor",
+  "version": "1.1",
+  "description": "Extract contest rankings from VJudge and send them to the Rank Merger tool.",
+  "permissions": ["activeTab", "scripting", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_title": "Send to Rank Merger"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
