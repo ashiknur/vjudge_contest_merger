@@ -110,6 +110,9 @@ Click **Export Excel (.xlsx)** to download a workbook with:
 
 ---
 
+![vjudge_merger_flowchart](vjudge_merger_flowchart.svg)
+
+
 ## 📐 How Ranking Is Calculated
 
 Each participant in each contest receives a **Contest Point (CP)**, computed from three components:
@@ -319,6 +322,3 @@ Open a GitHub Issue with:
 
 ---
 
-## 📄 License
-
-MIT — free to use, modify, and distribute.
