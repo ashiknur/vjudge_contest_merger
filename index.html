@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>VJudge Ranking Merger</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-6">
+
+<div class="max-w-5xl mx-auto bg-white p-6 rounded-2xl shadow">
+  <h1 class="text-2xl font-bold mb-4">VJudge Ranking Merger</h1>
+
+  <label class="block mb-2">Number of Contests:</label>
+  <input id="contestCount" type="number" class="border p-2 mb-4 w-full" />
+  <button onclick="generateInputs()" class="bg-blue-500 text-white px-4 py-2 rounded">Generate Inputs</button>
+
+  <div id="inputs" class="mt-4"></div>
+
+  <button onclick="processData()" class="bg-green-500 text-white px-4 py-2 rounded mt-4">Calculate Ranking</button>
+
+  <div id="output" class="mt-6"></div>
+</div>
+
+<script>
+// Receive data from extension
+window.addEventListener("message", (event) => {
+  if (event.data?.type === "VJUDGE_DATA") {
+    const index = document.querySelectorAll("textarea").length;
+    const textarea = document.createElement("textarea");
+    textarea.className = "border p-2 w-full h-24 mb-4";
+    textarea.value = JSON.stringify(event.data.payload);
+    document.getElementById("inputs").appendChild(textarea);
+  }
+});
+
+function generateInputs() {
+  const n = document.getElementById('contestCount').value;
+  const container = document.getElementById('inputs');
+  container.innerHTML = '';
+
+  for (let i = 0; i < n; i++) {
+    container.innerHTML += `
+      <div class="mb-4">
+        <label>Contest ${i+1} Data:</label>
+        <textarea id="contest${i}" class="border p-2 w-full h-24"></textarea>
+      </div>
+    `;
+  }
+}
+
+function processData() {
+  const n = document.getElementById('contestCount').value;
+  let contests = [];
+
+  for (let i = 0; i < n; i++) {
+    const text = document.getElementById(`contest${i}`).value;
+    contests.push(JSON.parse(text));
+  }
+
+  const X = contests.map(c => c.length);
+  const Xmin = Math.min(...X);
+  const Xmax = Math.max(...X);
+
+  let users = {};
+
+  contests.forEach((contest) => {
+    const Smax = Math.max(...contest.map(u => u.solved));
+
+    contest.forEach(user => {
+      const BP = 4.0 * Math.pow(0.98, user.rank - 1);
+      const SP = Math.sqrt(user.solved / Smax);
+      const PP = Math.max((contest.length - Xmin) / (Xmax - Xmin), 0.1);
+      const CP = BP * SP + PP;
+
+      if (!users[user.handle]) {
+        users[user.handle] = { total: 0, count: 0 };
+      }
+
+      users[user.handle].total += CP;
+      users[user.handle].count += 1;
+    });
+  });
+
+  const result = Object.entries(users).map(([handle, data]) => {
+    let bonus = 0;
+    if (data.count == n) bonus = 0.5 * n;
+
+    return {
+      handle,
+      score: data.total + bonus
+    };
+  });
+
+  result.sort((a, b) => b.score - a.score);
+
+  let html = `<table class="table-auto w-full border">
+    <tr class="bg-gray-200">
+      <th class="border p-2">Rank</th>
+      <th class="border p-2">Handle</th>
+      <th class="border p-2">Final Score</th>
+    </tr>`;
+
+  result.forEach((u, i) => {
+    html += `<tr>
+      <td class="border p-2">${i+1}</td>
+      <td class="border p-2">${u.handle}</td>
+      <td class="border p-2">${u.score.toFixed(3)}</td>
+    </tr>`;
+  });
+
+  html += '</table>';
+
+  document.getElementById('output').innerHTML = html;
+}
+</script>
+
+</body>
+</html>
