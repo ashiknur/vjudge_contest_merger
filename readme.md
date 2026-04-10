@@ -1,6 +1,6 @@
 # 🏆 VJudge Contest Rank Merger
 
-A pure frontend web app that merges multiple [VJudge](https://vjudge.net) contest rankings into a single fair leaderboard using a custom weighted scoring formula. No backend required — deployable directly on **GitHub Pages**.
+A pure frontend web app that merges multiple [VJudge](https://vjudge.net) contest rankings into a single fair leaderboard using a custom weighted scoring formula.
 
 ---
 
@@ -28,15 +28,6 @@ The extension lets you extract ranking data directly from an open VJudge contest
 3. Click **Load unpacked**
 4. Select the `extension/` folder from this repository
 5. The **VJudge Rank Extractor** icon will appear in your toolbar
-
-> **Important:** Open `extension/background.js` and update the `MERGER_SITE_PATTERNS` array to match your GitHub Pages URL:
-> ```js
-> const MERGER_SITE_PATTERNS = [
->   "your-username.github.io",  // ← update this
->   "localhost",
->   "127.0.0.1",
-> ];
-> ```
 
 ---
 
