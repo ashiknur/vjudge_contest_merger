@@ -531,10 +531,9 @@
         </div>
 
         <div class="info-box mb-1" style="margin-bottom:1.2rem">
-          <strong>3 ways to load data per contest:</strong><br>
-          🧩 <strong>Via Extension</strong> — open VJudge rank page, click extension icon. Data auto-fills the slot below.<br>
-          🔗 <strong>Auto-Fetch</strong> — paste the VJudge URL or bare ID (e.g. <code>https://vjudge.net/contest/781164#rank</code>).<br>
-          📋 <strong>Manual Paste</strong> — CSV format <code>handle,rank,solved</code> one per line.
+          <strong>2 ways to load data per contest:</strong><br>
+          🧩 <strong>Via Extension</strong> — open the VJudge rank page, click the extension icon. Data auto-fills the slot and switches to Manual for review.<br>
+          📋 <strong>Manual Paste</strong> — paste CSV directly: <code>handle,rank,solved</code> one per line. You can copy rows straight from the VJudge rank table.
         </div>
 
         <div id="contest-inputs" class="contest-grid"></div>
@@ -548,9 +547,6 @@
             <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
             Back
           </button>
-          <div id="loading-indicator" class="hidden flex items-center gap-1" style="color:var(--muted);font-size:.82rem">
-            <span class="spinner"></span> Fetching contest data…
-          </div>
         </div>
       </div>
     </div>
@@ -693,10 +689,9 @@
     // Fill the manual name field if empty
     const manualNameEl = document.getElementById(`cname-manual-${i}`);
     if(manualNameEl && !manualNameEl.value){
-      // Try to get name from the fetch-section name field or ext-name field
-      const fetchName  = document.getElementById(`cname-${i}`)?.value.trim();
+      // Try to get name from the ext-name field
       const extName    = document.getElementById(`ext-name-${i}`)?.value.trim();
-      manualNameEl.value = fetchName || extName || `Contest ${cid}`;
+      manualNameEl.value = extName || `Contest ${cid}`;
     }
 
     // Fill the textarea
@@ -760,15 +755,14 @@
         <div class="flex items-center gap-1" style="margin-bottom:.6rem;flex-wrap:wrap;">
           <span class="contest-label">Contest ${i+1}</span>
           <div class="toggle-group">
-            <button class="toggle-btn" onclick="setMode(${i},'ext')"    id="mode-ext-${i}">🧩 Extension</button>
-            <button class="toggle-btn active" onclick="setMode(${i},'fetch')"  id="mode-fetch-${i}">Auto-Fetch</button>
-            <button class="toggle-btn" onclick="setMode(${i},'manual')" id="mode-manual-${i}">Manual Paste</button>
+            <button class="toggle-btn active" onclick="setMode(${i},'ext')"    id="mode-ext-${i}">🧩 Extension</button>
+            <button class="toggle-btn"        onclick="setMode(${i},'manual')" id="mode-manual-${i}">📋 Manual Paste</button>
           </div>
           <span id="status-${i}"></span>
         </div>
 
         <!-- Extension waiting section -->
-        <div id="ext-section-${i}" class="hidden">
+        <div id="ext-section-${i}">
           <div class="ext-waiting" id="ext-waiting-box-${i}">
             <div class="ext-icon" id="ext-icon-${i}">🧩</div>
             <div>
@@ -781,25 +775,6 @@
           <div style="margin-top:.6rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
             <input type="text" id="ext-name-${i}" placeholder="Contest name (auto-filled)" style="max-width:280px" />
             <button class="btn btn-danger" style="font-size:.75rem;padding:.35rem .8rem" onclick="clearExtSlot(${i})">Clear Slot</button>
-          </div>
-        </div>
-
-        <div id="fetch-section-${i}">
-          <div class="contest-input-inner">
-            <div>
-              <label>Contest URL or ID</label>
-              <input type="text" id="cid-${i}" placeholder="https://vjudge.net/contest/781164#rank" />
-            </div>
-            <div>
-              <label>Custom Name (optional)</label>
-              <input type="text" id="cname-${i}" placeholder="e.g. Week 1 Contest" />
-            </div>
-          </div>
-          <div style="margin-top:.6rem">
-            <button class="btn btn-secondary" style="font-size:.78rem;padding:.4rem .9rem" onclick="tryFetch(${i})">
-              <span class="spinner hidden" id="spin-${i}"></span>
-              Fetch Data
-            </button>
           </div>
         </div>
 
@@ -822,10 +797,8 @@
 
   function setMode(i, mode){
     document.getElementById(`mode-ext-${i}`).classList.toggle('active',    mode==='ext');
-    document.getElementById(`mode-fetch-${i}`).classList.toggle('active',  mode==='fetch');
     document.getElementById(`mode-manual-${i}`).classList.toggle('active', mode==='manual');
     document.getElementById(`ext-section-${i}`).classList.toggle('hidden',    mode!=='ext');
-    document.getElementById(`fetch-section-${i}`).classList.toggle('hidden',  mode!=='fetch');
     document.getElementById(`manual-section-${i}`).classList.toggle('hidden', mode!=='manual');
 
     // If switching to ext mode, try to drain queued data into this slot
@@ -853,307 +826,15 @@
     updateExtBadge();
   }
 
-  // ════════════════════════════════════════════════
-  //  DATA FETCHING
-  // ════════════════════════════════════════════════
-  const PROXY  = 'https://api.allorigins.win/get?url=';
-  const PROXY2 = 'https://corsproxy.io/?url=';
-
-  // ── Extract numeric contest ID from full URL or bare number ──
-  // Handles: https://vjudge.net/contest/781164#rank
-  //          https://vjudge.net/contest/781164
-  //          vjudge.net/contest/781164
-  //          781164
-  function extractContestId(raw){
-    const s = raw.trim();
-    // Match digits after /contest/
-    const m = s.match(/\/contest\/(\d+)/);
-    if(m) return m[1];
-    // bare number
-    if(/^\d+$/.test(s)) return s;
-    return null;
-  }
-
   function setStatus(i, type, msg){
     const el = document.getElementById(`status-${i}`);
-    el.innerHTML = `<span class="status status-${type}"><span class="status-dot"></span>${msg}</span>`;
-  }
-
-  async function tryFetch(i){
-    const raw = document.getElementById(`cid-${i}`).value.trim();
-    if(!raw){ toast('Enter a Contest URL or ID first.','err'); return; }
-
-    const cid = extractContestId(raw);
-    if(!cid){ toast('Could not extract a Contest ID from that input.','err'); return; }
-
-    // Normalise the input field to bare ID for cleanliness
-    document.getElementById(`cid-${i}`).value = cid;
-
-    const spin = document.getElementById(`spin-${i}`);
-    spin.classList.remove('hidden');
-    setStatus(i,'wait','Fetching…');
-
-    let data = null;
-    const tried = [];
-
-    // ── Strategy 1: VJudge rank JSON API endpoints (most reliable) ──
-    const jsonEndpoints = [
-      // Standard rank pagination endpoint
-      `https://vjudge.net/contest/rank/single?contestId=${cid}&language=0&page=1&pageSize=2000`,
-      // Alternative rank endpoint
-      `https://vjudge.net/contest/${cid}/rank/single`,
-      // Overview JSON which sometimes includes participants
-      `https://vjudge.net/contest/overview/${cid}`,
-    ];
-
-    for(const ep of jsonEndpoints){
-      if(data) break;
-      try {
-        data = await fetchJsonEndpoint(ep);
-        if(data && data.length > 0){ tried.push(`API:${ep.split('?')[0].split('/').pop()}`); break; }
-        else data = null;
-      } catch(e){ data = null; }
-    }
-
-    // ── Strategy 2: Proxy full HTML page, extract embedded pageModel JSON ──
-    if(!data){
-      try {
-        data = await fetchPageModel(cid);
-        if(data && data.length > 0) tried.push('pageModel');
-        else data = null;
-      } catch(e){ data = null; }
-    }
-
-    // ── Strategy 3: Proxy HTML + DOM parse rank table (server-side rendered) ──
-    if(!data){
-      try {
-        data = await fetchAndParseDOM(cid);
-        if(data && data.length > 0) tried.push('DOM');
-        else data = null;
-      } catch(e){ data = null; }
-    }
-
-    spin.classList.add('hidden');
-
-    if(data && data.length > 0){
-      setStatus(i,'ok',`${data.length} participants`);
-      toast(`Contest ${cid}: loaded ${data.length} participants.`,'ok');
-      storeContestData(i, cid, data);
-      // Switch to manual mode and show the data so user can review/edit
-      switchToManualWithData(i, cid, data);
-    } else {
-      setStatus(i,'err','Auto-fetch failed — use Manual Paste');
-      toast(`Could not auto-fetch contest ${cid}. VJudge may require login or blocks proxies. Switch to Manual Paste.`,'err');
-    }
-  }
-
-  // ── Fetch a JSON API endpoint through both proxies ──
-  async function fetchJsonEndpoint(apiUrl){
-    // Try allorigins
-    try {
-      const proxied = PROXY + encodeURIComponent(apiUrl);
-      const res = await fetch(proxied, {signal: AbortSignal.timeout(10000)});
-      if(res.ok){
-        const json = await res.json();
-        const content = json.contents;
-        const parsed = parseVJudgeJson(content);
-        if(parsed && parsed.length > 0) return parsed;
-      }
-    } catch(e){}
-
-    // Try corsproxy
-    try {
-      const proxied = PROXY2 + encodeURIComponent(apiUrl);
-      const res = await fetch(proxied, {signal: AbortSignal.timeout(10000)});
-      if(res.ok){
-        const text = await res.text();
-        const parsed = parseVJudgeJson(text);
-        if(parsed && parsed.length > 0) return parsed;
-      }
-    } catch(e){}
-
-    return null;
-  }
-
-  // ── Parse various VJudge JSON response shapes ──
-  function parseVJudgeJson(raw){
-    if(!raw) return null;
-    let obj;
-    try { obj = JSON.parse(raw); } catch(e){ return null; }
-
-    // Shape A: { data: [{rank, userName, acceptedNumber}, ...] }
-    if(obj.data && Array.isArray(obj.data)){
-      return obj.data.map((p,i)=>({
-        handle: p.userName || p.username || p.handle || p.nickName || `user_${i+1}`,
-        rank:   parseInt(p.rank) || i+1,
-        solved: parseInt(p.acceptedNumber ?? p.solved ?? p.ac ?? 0)
-      })).filter(p=>p.handle);
-    }
-
-    // Shape B: top-level array  [{...}, ...]
-    if(Array.isArray(obj) && obj.length > 0){
-      const first = obj[0];
-      if(first.userName || first.username || first.handle || first.rank !== undefined){
-        return obj.map((p,i)=>({
-          handle: p.userName || p.username || p.handle || p.nickName || `user_${i+1}`,
-          rank:   parseInt(p.rank) || i+1,
-          solved: parseInt(p.acceptedNumber ?? p.solved ?? p.ac ?? 0)
-        })).filter(p=>p.handle);
-      }
-      // Shape C: array of arrays  [[handle, rank, solved], ...]
-      if(Array.isArray(first)){
-        return obj.map((p,i)=>({
-          handle: String(p[0] || `user_${i+1}`),
-          rank:   parseInt(p[1]) || i+1,
-          solved: parseInt(p[2]) || 0
-        })).filter(p=>p.handle);
-      }
-    }
-
-    // Shape D: { participants: [...] }  or  { rankData: [...] }
-    const list = obj.participants || obj.rankData || obj.rank || obj.rankList;
-    if(Array.isArray(list) && list.length > 0){
-      return list.map((p,i)=>({
-        handle: p.userName || p.username || p.handle || p.nickName || `user_${i+1}`,
-        rank:   parseInt(p.rank) || i+1,
-        solved: parseInt(p.acceptedNumber ?? p.solved ?? p.ac ?? 0)
-      })).filter(p=>p.handle);
-    }
-
-    return null;
-  }
-
-  // ── Fetch page HTML and extract embedded pageModel / bsy.contest.init JSON ──
-  async function fetchPageModel(cid){
-    const pageUrl = `https://vjudge.net/contest/${cid}`;
-    let html = null;
-
-    try {
-      const res = await fetch(PROXY + encodeURIComponent(pageUrl), {signal: AbortSignal.timeout(12000)});
-      if(res.ok){ const j = await res.json(); html = j.contents; }
-    } catch(e){}
-
-    if(!html){
-      try {
-        const res = await fetch(PROXY2 + encodeURIComponent(pageUrl), {signal: AbortSignal.timeout(12000)});
-        if(res.ok) html = await res.text();
-      } catch(e){}
-    }
-
-    if(!html) return null;
-
-    // Pattern 1: var pageModel = {...}
-    const pm = html.match(/var\s+pageModel\s*=\s*(\{[\s\S]*?\})\s*;?\s*(?:var\s|bsy\.|<\/script>)/);
-    if(pm){ try { return parseVJudgeJson(pm[1]); } catch(e){} }
-
-    // Pattern 2: bsy.contest.init({...})
-    const bsy = html.match(/bsy\.contest\.init\((\{[\s\S]*?\})\)/);
-    if(bsy){ try { return parseVJudgeJson(bsy[1]); } catch(e){} }
-
-    // Pattern 3: window.__INITIAL_STATE__ = {...}
-    const ws = html.match(/__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\})\s*;/);
-    if(ws){ try { return parseVJudgeJson(ws[1]); } catch(e){} }
-
-    return null;
-  }
-
-  // ── Fetch page HTML + parse #contest-rank-table DOM ──
-  async function fetchAndParseDOM(cid){
-    const pageUrl = `https://vjudge.net/contest/${cid}`;
-    let html = null;
-
-    try {
-      const res = await fetch(PROXY + encodeURIComponent(pageUrl), {signal: AbortSignal.timeout(12000)});
-      if(res.ok){ const j = await res.json(); html = j.contents; }
-    } catch(e){}
-
-    if(!html) return null;
-    return parseRankTableDOM(html);
+    el.innerHTML = type ? `<span class="status status-${type}"><span class="status-dot"></span>${msg}</span>` : '';
   }
 
   // Hidden storage for fetched data per contest index
   const fetchedData = {};
   function storeContestData(i, cid, participants){
     fetchedData[i] = { cid, participants };
-  }
-
-  // ── DOM-based parser using the exact VJudge rank table structure ──
-  // Structure from DevTools:
-  //   table#contest-rank-table > tbody > tr[data-u][data-c]
-  //     td.rank.meta          → rank number text
-  //     td.team.meta          → a[href="/user/Handle"] title="Handle FullName"
-  //     td.solved.meta        → span → solved count
-  //     td.penalty.meta       → span.minute → penalty minutes
-  function parseRankTableDOM(html){
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-
-    // Primary: table with id="contest-rank-table"
-    let rows = Array.from(doc.querySelectorAll('#contest-rank-table tbody tr'));
-
-    // Fallback: any table with rank/team/solved columns
-    if(rows.length === 0){
-      rows = Array.from(doc.querySelectorAll('table tbody tr[data-u], table tbody tr[data-c]'));
-    }
-    if(rows.length === 0) return null;
-
-    const result = [];
-    let autoRank = 1;
-
-    rows.forEach(tr => {
-      // ── Rank ──
-      // td.rank or td.rank.meta
-      const rankTd = tr.querySelector('td.rank');
-      let rank = rankTd ? parseInt(rankTd.textContent.trim()) : NaN;
-      if(isNaN(rank) || rank <= 0) rank = autoRank;
-
-      // ── Handle ──
-      // td.team a[href^="/user/"] — title attr has "Handle FullName"
-      const teamTd = tr.querySelector('td.team');
-      let handle = '';
-      if(teamTd){
-        const link = teamTd.querySelector('a[href*="/user/"]');
-        if(link){
-          // title is "Handle FullName" — take first token as handle
-          const title = (link.getAttribute('title') || '').trim();
-          handle = title.split(/\s+/)[0] || '';
-          // fallback to href last segment
-          if(!handle){
-            const href = link.getAttribute('href') || '';
-            handle = href.split('/').pop() || '';
-          }
-          // fallback to link text
-          if(!handle) handle = link.textContent.trim();
-        }
-        // fallback: any link in the cell
-        if(!handle){
-          const anyLink = teamTd.querySelector('a');
-          if(anyLink) handle = anyLink.textContent.trim();
-        }
-        // last resort: cell text content (strip whitespace/icons)
-        if(!handle){
-          handle = teamTd.textContent.replace(/\s+/g,' ').trim().split(' ')[0];
-        }
-      }
-      // Also try data-u attribute on the row as a final fallback
-      if(!handle) handle = tr.getAttribute('data-u') || `user_${autoRank}`;
-
-      // ── Solved ──
-      // td.solved span, or td.solved text
-      const solvedTd = tr.querySelector('td.solved');
-      let solved = 0;
-      if(solvedTd){
-        const span = solvedTd.querySelector('span');
-        solved = parseInt((span || solvedTd).textContent.trim()) || 0;
-      }
-
-      if(handle) {
-        result.push({ handle, rank, solved });
-        autoRank++;
-      }
-    });
-
-    return result.length > 0 ? result : null;
   }
 
   // ════════════════════════════════════════════════
@@ -1165,7 +846,6 @@
     for(let line of lines){
       const parts = line.split(',').map(s=>s.trim());
       if(parts.length < 2) continue;
-      // skip header if present
       if(parts[0].toLowerCase()==='handle' || isNaN(parseInt(parts[1]))) continue;
       const handle = parts[0];
       const rank = parseInt(parts[1]) || 0;
@@ -1181,65 +861,28 @@
   async function collectData(){
     const contests = [];
     for(let i=0;i<numContests;i++){
-      const isExt    = document.getElementById(`mode-ext-${i}`)?.classList.contains('active');
-      const isManual = document.getElementById(`mode-manual-${i}`)?.classList.contains('active');
+      const isExt = document.getElementById(`mode-ext-${i}`)?.classList.contains('active');
 
       if(isExt){
+        // Extension mode — data must already be in fetchedData (via postMessage)
         if(!fetchedData[i]){
-          toast(`Contest ${i+1} (Extension): No data received. Open VJudge rank page and click the extension icon.`, 'err');
+          toast(`Contest ${i+1}: No extension data yet. Open the VJudge rank page and click the extension icon.`, 'err');
           return null;
         }
         const nameEl = document.getElementById(`ext-name-${i}`);
         const name   = (nameEl && nameEl.value.trim()) || fetchedData[i].cid || `Contest ${i+1}`;
         contests.push({ id: fetchedData[i].cid, name, participants: fetchedData[i].participants });
 
-      } else if(isManual){
+      } else {
+        // Manual Paste mode
         const csvEl  = document.getElementById(`csv-${i}`);
         const nameEl = document.getElementById(`cname-manual-${i}`);
         const raw    = csvEl ? csvEl.value.trim() : '';
-        if(!raw){ toast(`Contest ${i+1}: No data pasted.`,'err'); return null; }
+        if(!raw){ toast(`Contest ${i+1}: No data entered. Paste CSV or use the extension.`, 'err'); return null; }
         const participants = parseCSV(raw);
-        if(participants.length===0){ toast(`Contest ${i+1}: Could not parse CSV.`,'err'); return null; }
+        if(participants.length===0){ toast(`Contest ${i+1}: Could not parse CSV. Format: handle,rank,solved`, 'err'); return null; }
         const name = (nameEl && nameEl.value.trim()) || `Contest ${i+1}`;
         contests.push({ id: `C${i+1}`, name, participants });
-
-      } else {
-        // Auto-fetch mode
-        if(fetchedData[i]){
-          const cnameEl = document.getElementById(`cname-${i}`);
-          const name = (cnameEl && cnameEl.value.trim()) || `Contest ${fetchedData[i].cid}`;
-          contests.push({ id: fetchedData[i].cid, name, participants: fetchedData[i].participants });
-        } else {
-          const cidEl = document.getElementById(`cid-${i}`);
-          const raw   = cidEl ? cidEl.value.trim() : '';
-          const cid   = extractContestId(raw);
-          if(!cid){ toast(`Contest ${i+1}: Enter a URL/ID or switch mode.`,'err'); return null; }
-
-          document.getElementById('loading-indicator').classList.remove('hidden');
-          setStatus(i,'wait','Fetching…');
-
-          let data = null;
-          const eps = [
-            `https://vjudge.net/contest/rank/single?contestId=${cid}&language=0&page=1&pageSize=2000`,
-            `https://vjudge.net/contest/${cid}/rank/single`,
-          ];
-          for(const ep of eps){ if(data) break; try { data = await fetchJsonEndpoint(ep); } catch(e){} }
-          if(!data){ try { data = await fetchPageModel(cid); } catch(e){} }
-          if(!data){ try { data = await fetchAndParseDOM(cid); } catch(e){} }
-
-          document.getElementById('loading-indicator').classList.add('hidden');
-
-          if(!data || data.length===0){
-            setStatus(i,'err','Fetch failed');
-            toast(`Contest ${cid}: Could not auto-fetch. Use extension or Manual Paste.`,'err');
-            return null;
-          }
-          setStatus(i,'ok',`${data.length} participants`);
-          const cnameEl = document.getElementById(`cname-${i}`);
-          const name = (cnameEl && cnameEl.value.trim()) || `Contest ${cid}`;
-          contests.push({ id: cid, name, participants: data });
-          storeContestData(i, cid, data);
-        }
       }
     }
     return contests;
