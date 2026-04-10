@@ -1,118 +1,1636 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>VJudge Ranking Merger</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VJudge Rank Merger</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg:       #0a0c10;
+      --surface:  #10141c;
+      --card:     #141921;
+      --border:   #1e2635;
+      --border2:  #2a3347;
+      --text:     #d4dbe8;
+      --muted:    #556070;
+      --accent:   #00e5ff;
+      --accent2:  #7c3aed;
+      --gold:     #fbbf24;
+      --silver:   #94a3b8;
+      --bronze:   #c97c3a;
+      --green:    #22d3a5;
+      --red:      #f87171;
+      --glow:     0 0 18px rgba(0,229,255,.18);
+      --radius:   10px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── grid noise bg ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(0,229,255,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    /* ── glowing orbs ── */
+    .orb {
+      position: fixed; border-radius: 50%;
+      filter: blur(120px); opacity: .12; pointer-events: none; z-index: 0;
+    }
+    .orb-1 { width:500px; height:500px; background:#00e5ff; top:-150px; left:-150px; }
+    .orb-2 { width:400px; height:400px; background:#7c3aed; bottom:-100px; right:-100px; }
+
+    main {
+      position: relative; z-index: 1;
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      padding: 3.5rem 1rem 2.5rem;
+      position: relative; z-index: 1;
+    }
+    .badge {
+      display: inline-flex; align-items: center; gap: .5rem;
+      background: rgba(0,229,255,.08);
+      border: 1px solid rgba(0,229,255,.2);
+      border-radius: 999px;
+      padding: .3rem 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .75rem;
+      color: var(--accent);
+      letter-spacing: .08em;
+      margin-bottom: 1.2rem;
+    }
+    .badge-dot { width:7px; height:7px; border-radius:50%; background:var(--accent); animation:pulse 1.8s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    h1 {
+      font-size: clamp(2rem, 5vw, 3.4rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -.02em;
+      color: #fff;
+    }
+    h1 span { color: var(--accent); }
+    .subtitle {
+      margin-top: .8rem;
+      font-size: 1rem;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.8rem;
+      margin-bottom: 1.5rem;
+    }
+    .card-title {
+      font-size: .72rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--accent);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      margin-bottom: 1.2rem;
+    }
+
+    /* ── Step indicator ── */
+    .steps {
+      display: flex;
+      gap: .6rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+    .step-pill {
+      display: flex; align-items: center; gap: .5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: .35rem .9rem;
+      font-size: .8rem;
+      color: var(--muted);
+      transition: all .3s;
+    }
+    .step-pill.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,255,.07); }
+    .step-pill.done   { border-color: var(--green);  color: var(--green);  background: rgba(34,211,165,.07); }
+    .step-num {
+      width:20px; height:20px; border-radius:50%;
+      background: var(--border2); display:grid; place-items:center;
+      font-size:.72rem; font-family:'JetBrains Mono',monospace; font-weight:700;
+    }
+    .step-pill.active .step-num { background: var(--accent); color: #000; }
+    .step-pill.done   .step-num { background: var(--green);  color: #000; }
+
+    /* ── Inputs ── */
+    label { display: block; font-size: .82rem; color: var(--muted); margin-bottom: .4rem; }
+    input[type=number], input[type=text], textarea {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .9rem;
+      padding: .65rem 1rem;
+      transition: border-color .2s, box-shadow .2s;
+      outline: none;
+    }
+    input:focus, textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,229,255,.1);
+    }
+    textarea { resize: vertical; min-height: 120px; line-height: 1.6; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: .5rem;
+      border: none; border-radius: 8px; cursor: pointer;
+      font-family: 'Syne', sans-serif; font-weight: 700;
+      font-size: .9rem; padding: .7rem 1.5rem;
+      transition: all .2s; text-decoration: none;
+    }
+    .btn-primary {
+      background: var(--accent); color: #000;
+    }
+    .btn-primary:hover { background: #33eaff; transform: translateY(-1px); box-shadow: var(--glow); }
+    .btn-secondary {
+      background: var(--surface); color: var(--text);
+      border: 1px solid var(--border2);
+    }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-ghost { background: transparent; color: var(--muted); padding: .5rem .8rem; font-size:.8rem; }
+    .btn-ghost:hover { color: var(--accent); }
+    .btn-danger { background: rgba(248,113,113,.12); color: var(--red); border: 1px solid rgba(248,113,113,.25); }
+    .btn-danger:hover { background: rgba(248,113,113,.22); }
+    .btn-green { background: var(--green); color: #000; }
+    .btn-green:hover { background: #4de8c0; transform: translateY(-1px); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; transform: none !important; }
+
+    /* ── Contest input row ── */
+    .contest-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+    .contest-input-row {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.2rem;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 1rem;
+      align-items: start;
+      transition: border-color .2s;
+    }
+    .contest-input-row:hover { border-color: var(--border2); }
+    .contest-num {
+      width: 34px; height: 34px;
+      background: rgba(0,229,255,.08);
+      border: 1px solid rgba(0,229,255,.2);
+      border-radius: 8px;
+      display: grid; place-items: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .8rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .contest-input-col { display: flex; flex-direction: column; gap: .3rem; }
+    .contest-label { font-size: .75rem; color: var(--muted); font-family:'JetBrains Mono',monospace; }
+    .contest-input-inner { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+    @media(max-width:640px){ .contest-input-inner { grid-template-columns: 1fr; } }
+
+    /* ── Toggle (fetch/manual) ── */
+    .toggle-group {
+      display: flex;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 3px;
+      width: fit-content;
+    }
+    .toggle-btn {
+      padding: .35rem .85rem;
+      border-radius: 6px;
+      font-size: .78rem;
+      font-family: 'JetBrains Mono', monospace;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      transition: all .2s;
+    }
+    .toggle-btn.active { background: var(--accent); color: #000; font-weight: 700; }
+
+    /* ── Status badges ── */
+    .status {
+      display: inline-flex; align-items: center; gap: .4rem;
+      padding: .25rem .7rem; border-radius: 999px;
+      font-size: .72rem; font-family: 'JetBrains Mono', monospace;
+    }
+    .status-ok    { background: rgba(34,211,165,.1); color: var(--green);  border:1px solid rgba(34,211,165,.2); }
+    .status-err   { background: rgba(248,113,113,.1); color: var(--red);   border:1px solid rgba(248,113,113,.2); }
+    .status-wait  { background: rgba(0,229,255,.1);   color: var(--accent);border:1px solid rgba(0,229,255,.2); }
+    .status-dot   { width:6px;height:6px;border-radius:50%;background:currentColor; }
+
+    /* ── Loading spinner ── */
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(0,229,255,.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Tables ── */
+    .table-wrap { overflow-x: auto; border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    thead tr { background: rgba(0,229,255,.05); border-bottom: 1px solid var(--border2); }
+    th {
+      padding: .75rem 1rem;
+      text-align: left;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .7rem;
+      letter-spacing: .08em;
+      color: var(--accent);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    td {
+      padding: .65rem 1rem;
+      border-bottom: 1px solid rgba(30,38,53,.8);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .8rem;
+      color: var(--text);
+      white-space: nowrap;
+    }
+    tr:last-child td { border-bottom: none; }
+    tbody tr { transition: background .15s; }
+    tbody tr:hover { background: rgba(0,229,255,.03); }
+
+    /* ── rank medals ── */
+    .rank-1 td:first-child { color: var(--gold); }
+    .rank-2 td:first-child { color: var(--silver); }
+    .rank-3 td:first-child { color: var(--bronze); }
+    .medal { font-size: 1rem; }
+    .highlight-row-1 { background: rgba(251,191,36,.04) !important; border-left: 3px solid var(--gold); }
+    .highlight-row-2 { background: rgba(148,163,184,.04) !important; border-left: 3px solid var(--silver); }
+    .highlight-row-3 { background: rgba(201,124,58,.04) !important; border-left: 3px solid var(--bronze); }
+
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .text-accent { color: var(--accent); }
+    .text-green  { color: var(--green); }
+    .text-muted  { color: var(--muted); }
+    .text-gold   { color: var(--gold); }
+
+    /* ── Section heading ── */
+    .section-heading {
+      display: flex; align-items: center; gap: 1rem;
+      margin-bottom: 1.2rem;
+    }
+    .section-heading h2 {
+      font-size: 1.15rem; font-weight: 700; color: #fff;
+    }
+    .section-line { flex: 1; height: 1px; background: var(--border); }
+
+    /* ── Contest result card header ── */
+    .contest-card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 1rem; flex-wrap: wrap;
+      margin-bottom: 1.2rem;
+    }
+    .contest-card-title {
+      display: flex; align-items: center; gap: .8rem;
+    }
+    .contest-tag {
+      background: rgba(0,229,255,.08);
+      border: 1px solid rgba(0,229,255,.18);
+      border-radius: 6px;
+      padding: .25rem .6rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .72rem;
+      color: var(--accent);
+    }
+    .stat-chips { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .chip {
+      background: var(--surface); border: 1px solid var(--border2);
+      border-radius: 6px; padding: .2rem .6rem;
+      font-size: .72rem; font-family: 'JetBrains Mono', monospace;
+      color: var(--muted);
+    }
+    .chip b { color: var(--text); }
+
+    /* ── recording input in table ── */
+    .rec-input {
+      background: transparent;
+      border: none;
+      border-bottom: 1px dashed var(--border2);
+      border-radius: 0;
+      padding: .2rem .3rem;
+      font-size: .75rem;
+      color: var(--muted);
+      width: 130px;
+    }
+    .rec-input:focus { border-bottom-color: var(--accent); color: var(--text); box-shadow: none; }
+
+    /* ── Final leaderboard ── */
+    .leaderboard-header {
+      background: linear-gradient(135deg, rgba(0,229,255,.06), rgba(124,58,237,.06));
+      border: 1px solid rgba(0,229,255,.15);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      text-align: center;
+    }
+    .leaderboard-header h2 {
+      font-size: 1.8rem; font-weight: 800; color: #fff; letter-spacing: -.02em;
+    }
+    .leaderboard-header p { color: var(--muted); font-size: .85rem; margin-top:.3rem; }
+
+    /* ── score bar ── */
+    .score-bar-wrap { display: flex; align-items: center; gap: .6rem; }
+    .score-bar {
+      height: 4px; border-radius: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      min-width: 4px;
+    }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex; align-items: center; gap: .8rem;
+      flex-wrap: wrap; margin-bottom: 1rem;
+    }
+
+    /* ── Notice/info box ── */
+    .info-box {
+      background: rgba(0,229,255,.05);
+      border: 1px solid rgba(0,229,255,.15);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      padding: 1rem 1.2rem;
+      font-size: .82rem;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    .info-box code {
+      background: rgba(0,229,255,.1);
+      border-radius: 4px;
+      padding: .1em .4em;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--accent);
+      font-size: .85em;
+    }
+    .info-box strong { color: var(--text); }
+
+    /* ── Toast ── */
+    #toast-container {
+      position: fixed; bottom: 1.5rem; right: 1.5rem;
+      display: flex; flex-direction: column; gap: .5rem; z-index: 1000;
+    }
+    .toast {
+      background: var(--card);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: .7rem 1.2rem;
+      font-size: .82rem;
+      animation: slideIn .3s ease;
+      max-width: 320px;
+    }
+    .toast-ok  { border-left: 3px solid var(--green); }
+    .toast-err { border-left: 3px solid var(--red); }
+    .toast-info{ border-left: 3px solid var(--accent); }
+    @keyframes slideIn { from { transform: translateX(60px); opacity:0; } to { transform:translateX(0); opacity:1; } }
+
+    /* ── hidden ── */
+    .hidden { display: none !important; }
+
+    /* ── flex helpers ── */
+    .flex { display: flex; }
+    .flex-wrap { flex-wrap: wrap; }
+    .gap-1 { gap: .5rem; }
+    .gap-2 { gap: 1rem; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .mt-1 { margin-top: .5rem; }
+    .mt-2 { margin-top: 1rem; }
+    .mt-3 { margin-top: 1.5rem; }
+    .mb-1 { margin-bottom: .5rem; }
+
+    /* ── Extension mode ── */
+    .ext-waiting {
+      background: rgba(124,58,237,.06);
+      border: 1px dashed rgba(124,58,237,.35);
+      border-radius: 8px;
+      padding: 1.2rem;
+      display: flex; align-items: center; gap: 1rem;
+      font-size: .84rem; color: var(--muted);
+    }
+    .ext-waiting.received {
+      background: rgba(34,211,165,.06);
+      border: 1px solid rgba(34,211,165,.25);
+    }
+    .ext-icon {
+      width: 40px; height: 40px; border-radius: 10px; flex-shrink:0;
+      background: rgba(124,58,237,.15); border: 1px solid rgba(124,58,237,.3);
+      display: grid; place-items: center; font-size: 1.2rem;
+    }
+    .ext-icon.received { background: rgba(34,211,165,.12); border-color: rgba(34,211,165,.3); }
+    .ext-banner {
+      background: linear-gradient(135deg, rgba(124,58,237,.12), rgba(0,229,255,.08));
+      border: 1px solid rgba(124,58,237,.25);
+      border-radius: 10px;
+      padding: 1.2rem 1.5rem;
+      margin-bottom: 1.2rem;
+      display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+    }
+    .ext-banner-icon { font-size: 1.8rem; }
+    .ext-badge {
+      background: rgba(124,58,237,.15); border: 1px solid rgba(124,58,237,.3);
+      border-radius: 999px; padding: .2rem .7rem;
+      font-size: .72rem; font-family:'JetBrains Mono',monospace; color: #a78bfa;
+    }
+    .ext-badge.active { background: rgba(34,211,165,.12); border-color: rgba(34,211,165,.3); color: var(--green); animation: pulse 1.8s infinite; }
+  </style>
 </head>
-<body class="bg-gray-100 p-6">
+<body>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
 
-<div class="max-w-5xl mx-auto bg-white p-6 rounded-2xl shadow">
-  <h1 class="text-2xl font-bold mb-4">VJudge Ranking Merger</h1>
+  <div id="toast-container"></div>
 
-  <label class="block mb-2">Number of Contests:</label>
-  <input id="contestCount" type="number" class="border p-2 mb-4 w-full" />
-  <button onclick="generateInputs()" class="bg-blue-500 text-white px-4 py-2 rounded">Generate Inputs</button>
+  <header>
+    <div class="badge"><span class="badge-dot"></span> VJudge Ranking Tool</div>
+    <h1>Contest <span>Rank</span> Merger</h1>
+    <p class="subtitle">Merge multiple VJudge contest rankings into one fair leaderboard</p>
+  </header>
 
-  <div id="inputs" class="mt-4"></div>
+  <main>
+    <!-- Steps -->
+    <div class="steps" id="steps-indicator">
+      <div class="step-pill active" id="step-pill-1"><span class="step-num">1</span> Setup</div>
+      <div class="step-pill" id="step-pill-2"><span class="step-num">2</span> Input Data</div>
+      <div class="step-pill" id="step-pill-3"><span class="step-num">3</span> Results</div>
+    </div>
 
-  <button onclick="processData()" class="bg-green-500 text-white px-4 py-2 rounded mt-4">Calculate Ranking</button>
+    <!-- STEP 1: How many contests -->
+    <div id="step1" class="card">
+      <div class="card-title">// Step 01 — Contest Setup</div>
+      <div style="max-width:340px">
+        <label for="num-contests">How many contests do you want to merge?</label>
+        <input type="number" id="num-contests" min="1" max="20" value="2" />
+        <div style="margin-top:1rem">
+          <button class="btn btn-primary" onclick="goToStep2()">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            Configure Contests
+          </button>
+        </div>
+      </div>
+    </div>
 
-  <div id="output" class="mt-6"></div>
-</div>
+    <!-- STEP 2: Contest inputs -->
+    <div id="step2" class="hidden">
+      <div class="card">
+        <div class="card-title">// Step 02 — Contest Data</div>
 
-<script>
-// Receive data from extension
-window.addEventListener("message", (event) => {
-  if (event.data?.type === "VJUDGE_DATA") {
-    const index = document.querySelectorAll("textarea").length;
-    const textarea = document.createElement("textarea");
-    textarea.className = "border p-2 w-full h-24 mb-4";
-    textarea.value = JSON.stringify(event.data.payload);
-    document.getElementById("inputs").appendChild(textarea);
+        <!-- Extension banner -->
+        <div class="ext-banner">
+          <span class="ext-banner-icon">🧩</span>
+          <div style="flex:1">
+            <div style="font-weight:700;color:#fff;margin-bottom:.25rem">
+              VJudge Extractor Extension
+              <span class="ext-badge" id="ext-status-badge">Waiting…</span>
+            </div>
+            <div style="font-size:.8rem;color:var(--muted)">
+              Open a VJudge contest rank page → click the extension icon → data auto-fills here instantly.
+              Install the extension from the <strong style="color:var(--text)">download below</strong>.
+            </div>
+          </div>
+          <div id="ext-queue-display" style="font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--muted);text-align:right;min-width:80px">
+            Received: <b id="ext-recv-count" style="color:var(--text)">0</b>
+          </div>
+        </div>
+
+        <div class="info-box mb-1" style="margin-bottom:1.2rem">
+          <strong>3 ways to load data per contest:</strong><br>
+          🧩 <strong>Via Extension</strong> — open VJudge rank page, click extension icon. Data auto-fills the slot below.<br>
+          🔗 <strong>Auto-Fetch</strong> — paste the VJudge URL or bare ID (e.g. <code>https://vjudge.net/contest/781164#rank</code>).<br>
+          📋 <strong>Manual Paste</strong> — CSV format <code>handle,rank,solved</code> one per line.
+        </div>
+
+        <div id="contest-inputs" class="contest-grid"></div>
+
+        <div class="mt-3 flex gap-1 flex-wrap items-center">
+          <button class="btn btn-primary" id="calc-btn" onclick="calculateAll()">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            Calculate Ranking
+          </button>
+          <button class="btn btn-secondary" onclick="backToStep1()">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+            Back
+          </button>
+          <div id="loading-indicator" class="hidden flex items-center gap-1" style="color:var(--muted);font-size:.82rem">
+            <span class="spinner"></span> Fetching contest data…
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 3: Results -->
+    <div id="step3" class="hidden">
+      <div id="contest-results"></div>
+
+      <div class="leaderboard-header">
+        <h2>🏆 Final Leaderboard</h2>
+        <p>Aggregated scores across all contests</p>
+      </div>
+
+      <div class="toolbar">
+        <button class="btn btn-green" onclick="exportExcel()">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Export Excel (.xlsx)
+        </button>
+        <button class="btn btn-secondary" onclick="backToStep2()">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          Back to Inputs
+        </button>
+      </div>
+
+      <div class="card" style="padding:0; overflow:hidden">
+        <div class="table-wrap">
+          <table id="final-table">
+            <thead id="final-thead"></thead>
+            <tbody id="final-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+  // ════════════════════════════════════════════════
+  //  STATE
+  // ════════════════════════════════════════════════
+  let numContests = 2;
+  let allContestData = []; // [{id, name, participants:[{handle,rank,solved}]}]
+  let allContestResults = []; // [{id, name, rows:[{handle,rank,solved,BP,SP,PP,CP}], smax, xi}]
+  let xMin = 0, xMax = 0;
+
+  // Queue of extension payloads not yet assigned to a slot
+  const extQueue = [];
+
+  // ════════════════════════════════════════════════
+  //  EXTENSION postMessage LISTENER
+  // ════════════════════════════════════════════════
+  window.addEventListener('message', (event) => {
+    // Accept from any origin (extension injects into our page)
+    if(!event.data || event.data.type !== 'VJUDGE_DATA') return;
+
+    const payload = event.data.payload; // [{contest, contestId, handle, rank, solved}, ...]
+    if(!Array.isArray(payload) || payload.length === 0) return;
+
+    const contestName = payload[0]?.contest || 'Unknown Contest';
+    const contestId   = payload[0]?.contestId || '';
+
+    const participants = payload.map(p => ({
+      handle: p.handle,
+      rank:   parseInt(p.rank) || 0,
+      solved: parseInt(p.solved) || 0
+    })).filter(p => p.handle && p.rank > 0);
+
+    if(participants.length === 0) return;
+
+    // Try to fill the next "ext" mode slot that has no data yet
+    let filled = false;
+    for(let i = 0; i < numContests; i++){
+      const modeBtn = document.getElementById(`mode-ext-${i}`);
+      if(modeBtn && modeBtn.classList.contains('active') && !fetchedData[i]){
+        fillExtSlot(i, contestId, contestName, participants);
+        filled = true;
+        break;
+      }
+    }
+
+    // If no ext slot available, queue it and toast
+    if(!filled){
+      extQueue.push({ contestId, contestName, participants });
+      toast(`📩 Extension data queued (${contestName}). Switch a slot to 🧩 Extension mode.`, 'info');
+    }
+
+    updateExtBadge();
+  });
+
+  function fillExtSlot(i, contestId, contestName, participants){
+    storeContestData(i, contestId || `ext_${i}`, participants);
+
+    const box   = document.getElementById(`ext-waiting-box-${i}`);
+    const icon  = document.getElementById(`ext-icon-${i}`);
+    const title = document.getElementById(`ext-waiting-title-${i}`);
+    const sub   = document.getElementById(`ext-waiting-sub-${i}`);
+    const nameEl= document.getElementById(`ext-name-${i}`);
+
+    box?.classList.add('received');
+    icon?.classList.add('received');
+    if(icon) icon.textContent = '✅';
+    if(title) title.textContent = `${participants.length} participants loaded`;
+    if(sub)   sub.innerHTML = `<strong style="color:var(--text)">${escHtml(contestName)}</strong>${contestId ? ` &nbsp;·&nbsp; ID: <code style="color:var(--accent)">${escHtml(contestId)}</code>` : ''}`;
+    if(nameEl && !nameEl.value) nameEl.value = contestName;
+
+    setStatus(i, 'ok', `${participants.length} via extension`);
+    toast(`✅ Contest "${contestName}" filled into slot ${i+1}!`, 'ok');
+    // Switch to manual so user can review/edit before calculating
+    switchToManualWithData(i, contestId || `ext_${i}`, participants);
   }
-});
 
-function generateInputs() {
-  const n = document.getElementById('contestCount').value;
-  const container = document.getElementById('inputs');
-  container.innerHTML = '';
+  function updateExtBadge(){
+    const total = allCountExtSlotsFilled();
+    const badge = document.getElementById('ext-status-badge');
+    const count = document.getElementById('ext-recv-count');
+    if(badge){
+      badge.textContent = total > 0 ? `${total} received` : 'Waiting…';
+      badge.classList.toggle('active', total > 0);
+    }
+    if(count) count.textContent = total + extQueue.length;
+  }
 
-  for (let i = 0; i < n; i++) {
-    container.innerHTML += `
-      <div class="mb-4">
-        <label>Contest ${i+1} Data:</label>
-        <textarea id="contest${i}" class="border p-2 w-full h-24"></textarea>
+  function allCountExtSlotsFilled(){
+    let n = 0;
+    for(let i=0;i<numContests;i++){
+      const btn = document.getElementById(`mode-ext-${i}`);
+      if(btn && btn.classList.contains('active') && fetchedData[i]) n++;
+    }
+    return n;
+  }
+
+  // ── After a successful fetch/extension push, switch the slot to Manual
+  //    mode and populate the textarea so the user can review/edit the data ──
+  function switchToManualWithData(i, cid, participants){
+    // Build CSV string: handle,rank,solved
+    const csv = participants
+      .sort((a,b) => a.rank - b.rank)
+      .map(p => `${p.handle},${p.rank},${p.solved}`)
+      .join('\n');
+
+    // Fill the manual name field if empty
+    const manualNameEl = document.getElementById(`cname-manual-${i}`);
+    if(manualNameEl && !manualNameEl.value){
+      // Try to get name from the fetch-section name field or ext-name field
+      const fetchName  = document.getElementById(`cname-${i}`)?.value.trim();
+      const extName    = document.getElementById(`ext-name-${i}`)?.value.trim();
+      manualNameEl.value = fetchName || extName || `Contest ${cid}`;
+    }
+
+    // Fill the textarea
+    const csvEl = document.getElementById(`csv-${i}`);
+    if(csvEl) csvEl.value = csv;
+
+    // Switch the toggle visually to Manual
+    setMode(i, 'manual');
+
+    // Keep fetchedData in sync (collectData reads it for ext mode, but manual
+    // mode reads the textarea — both paths now have the data)
+    storeContestData(i, cid, participants);
+  }
+
+  // When user switches to ext mode, try to drain the queue into the slot
+  const _origSetMode_ref = null; // patched below after definition
+
+  // ════════════════════════════════════════════════
+  //  NAVIGATION
+  // ════════════════════════════════════════════════
+  function showStep(n) {
+    ['step1','step2','step3'].forEach((id,i)=>{
+      document.getElementById(id).classList.toggle('hidden', i+1 !== n);
+    });
+    for(let i=1;i<=3;i++){
+      const pill = document.getElementById(`step-pill-${i}`);
+      pill.classList.remove('active','done');
+      if(i < n) pill.classList.add('done');
+      if(i === n) pill.classList.add('active');
+    }
+  }
+
+  function backToStep1(){ showStep(1); }
+  function backToStep2(){ showStep(2); }
+
+  function goToStep2(){
+    numContests = parseInt(document.getElementById('num-contests').value) || 2;
+    if(numContests < 1 || numContests > 20){ toast('Enter between 1 and 20 contests.','err'); return; }
+    buildContestInputs();
+    showStep(2);
+  }
+
+  // ════════════════════════════════════════════════
+  //  BUILD INPUTS
+  // ════════════════════════════════════════════════
+  function buildContestInputs(){
+    const container = document.getElementById('contest-inputs');
+    container.innerHTML = '';
+    for(let i=0;i<numContests;i++){
+      container.appendChild(makeContestRow(i));
+    }
+  }
+
+  function makeContestRow(i){
+    const div = document.createElement('div');
+    div.className = 'contest-input-row';
+    div.id = `crow-${i}`;
+    div.innerHTML = `
+      <div class="contest-num">${i+1}</div>
+      <div class="contest-input-col" style="flex:1">
+        <div class="flex items-center gap-1" style="margin-bottom:.6rem;flex-wrap:wrap;">
+          <span class="contest-label">Contest ${i+1}</span>
+          <div class="toggle-group">
+            <button class="toggle-btn" onclick="setMode(${i},'ext')"    id="mode-ext-${i}">🧩 Extension</button>
+            <button class="toggle-btn active" onclick="setMode(${i},'fetch')"  id="mode-fetch-${i}">Auto-Fetch</button>
+            <button class="toggle-btn" onclick="setMode(${i},'manual')" id="mode-manual-${i}">Manual Paste</button>
+          </div>
+          <span id="status-${i}"></span>
+        </div>
+
+        <!-- Extension waiting section -->
+        <div id="ext-section-${i}" class="hidden">
+          <div class="ext-waiting" id="ext-waiting-box-${i}">
+            <div class="ext-icon" id="ext-icon-${i}">🧩</div>
+            <div>
+              <div style="font-weight:600;color:var(--text)" id="ext-waiting-title-${i}">Waiting for extension data…</div>
+              <div style="font-size:.75rem;margin-top:.2rem" id="ext-waiting-sub-${i}">
+                Open <code style="background:rgba(0,229,255,.08);border-radius:3px;padding:.1em .35em;color:var(--accent);font-size:.85em">vjudge.net/contest/{id}#rank</code> and click the extension icon.
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:.6rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+            <input type="text" id="ext-name-${i}" placeholder="Contest name (auto-filled)" style="max-width:280px" />
+            <button class="btn btn-danger" style="font-size:.75rem;padding:.35rem .8rem" onclick="clearExtSlot(${i})">Clear Slot</button>
+          </div>
+        </div>
+
+        <div id="fetch-section-${i}">
+          <div class="contest-input-inner">
+            <div>
+              <label>Contest URL or ID</label>
+              <input type="text" id="cid-${i}" placeholder="https://vjudge.net/contest/781164#rank" />
+            </div>
+            <div>
+              <label>Custom Name (optional)</label>
+              <input type="text" id="cname-${i}" placeholder="e.g. Week 1 Contest" />
+            </div>
+          </div>
+          <div style="margin-top:.6rem">
+            <button class="btn btn-secondary" style="font-size:.78rem;padding:.4rem .9rem" onclick="tryFetch(${i})">
+              <span class="spinner hidden" id="spin-${i}"></span>
+              Fetch Data
+            </button>
+          </div>
+        </div>
+
+        <div id="manual-section-${i}" class="hidden">
+          <div class="contest-input-inner">
+            <div>
+              <label>Contest Name</label>
+              <input type="text" id="cname-manual-${i}" placeholder="e.g. Week 1 Contest" />
+            </div>
+          </div>
+          <div style="margin-top:.6rem">
+            <label>Paste CSV data: <code style="background:rgba(0,229,255,.08);border-radius:4px;padding:.1em .4em;font-size:.78em;color:var(--accent)">handle,rank,solved</code></label>
+            <textarea id="csv-${i}" placeholder="alice,1,7&#10;bob,2,6&#10;charlie,3,6&#10;dave,4,5"></textarea>
+          </div>
+        </div>
       </div>
     `;
-  }
-}
-
-function processData() {
-  const n = document.getElementById('contestCount').value;
-  let contests = [];
-
-  for (let i = 0; i < n; i++) {
-    const text = document.getElementById(`contest${i}`).value;
-    contests.push(JSON.parse(text));
+    return div;
   }
 
-  const X = contests.map(c => c.length);
-  const Xmin = Math.min(...X);
-  const Xmax = Math.max(...X);
+  function setMode(i, mode){
+    document.getElementById(`mode-ext-${i}`).classList.toggle('active',    mode==='ext');
+    document.getElementById(`mode-fetch-${i}`).classList.toggle('active',  mode==='fetch');
+    document.getElementById(`mode-manual-${i}`).classList.toggle('active', mode==='manual');
+    document.getElementById(`ext-section-${i}`).classList.toggle('hidden',    mode!=='ext');
+    document.getElementById(`fetch-section-${i}`).classList.toggle('hidden',  mode!=='fetch');
+    document.getElementById(`manual-section-${i}`).classList.toggle('hidden', mode!=='manual');
 
-  let users = {};
+    // If switching to ext mode, try to drain queued data into this slot
+    if(mode === 'ext' && !fetchedData[i] && extQueue.length > 0){
+      const item = extQueue.shift();
+      fillExtSlot(i, item.contestId, item.contestName, item.participants);
+      updateExtBadge();
+    }
+  }
 
-  contests.forEach((contest) => {
-    const Smax = Math.max(...contest.map(u => u.solved));
+  function clearExtSlot(i){
+    delete fetchedData[i];
+    const box   = document.getElementById(`ext-waiting-box-${i}`);
+    const icon  = document.getElementById(`ext-icon-${i}`);
+    const title = document.getElementById(`ext-waiting-title-${i}`);
+    const sub   = document.getElementById(`ext-waiting-sub-${i}`);
+    const nameEl= document.getElementById(`ext-name-${i}`);
+    box.classList.remove('received');
+    icon.classList.remove('received');
+    icon.textContent = '🧩';
+    title.textContent = 'Waiting for extension data…';
+    sub.innerHTML = `Open <code style="background:rgba(0,229,255,.08);border-radius:3px;padding:.1em .35em;color:var(--accent);font-size:.85em">vjudge.net/contest/{id}#rank</code> and click the extension icon.`;
+    if(nameEl) nameEl.value = '';
+    setStatus(i,'','');
+    updateExtBadge();
+  }
 
-    contest.forEach(user => {
-      const BP = 4.0 * Math.pow(0.98, user.rank - 1);
-      const SP = Math.sqrt(user.solved / Smax);
-      const PP = Math.max((contest.length - Xmin) / (Xmax - Xmin), 0.1);
-      const CP = BP * SP + PP;
+  // ════════════════════════════════════════════════
+  //  DATA FETCHING
+  // ════════════════════════════════════════════════
+  const PROXY  = 'https://api.allorigins.win/get?url=';
+  const PROXY2 = 'https://corsproxy.io/?url=';
 
-      if (!users[user.handle]) {
-        users[user.handle] = { total: 0, count: 0 };
+  // ── Extract numeric contest ID from full URL or bare number ──
+  // Handles: https://vjudge.net/contest/781164#rank
+  //          https://vjudge.net/contest/781164
+  //          vjudge.net/contest/781164
+  //          781164
+  function extractContestId(raw){
+    const s = raw.trim();
+    // Match digits after /contest/
+    const m = s.match(/\/contest\/(\d+)/);
+    if(m) return m[1];
+    // bare number
+    if(/^\d+$/.test(s)) return s;
+    return null;
+  }
+
+  function setStatus(i, type, msg){
+    const el = document.getElementById(`status-${i}`);
+    el.innerHTML = `<span class="status status-${type}"><span class="status-dot"></span>${msg}</span>`;
+  }
+
+  async function tryFetch(i){
+    const raw = document.getElementById(`cid-${i}`).value.trim();
+    if(!raw){ toast('Enter a Contest URL or ID first.','err'); return; }
+
+    const cid = extractContestId(raw);
+    if(!cid){ toast('Could not extract a Contest ID from that input.','err'); return; }
+
+    // Normalise the input field to bare ID for cleanliness
+    document.getElementById(`cid-${i}`).value = cid;
+
+    const spin = document.getElementById(`spin-${i}`);
+    spin.classList.remove('hidden');
+    setStatus(i,'wait','Fetching…');
+
+    let data = null;
+    const tried = [];
+
+    // ── Strategy 1: VJudge rank JSON API endpoints (most reliable) ──
+    const jsonEndpoints = [
+      // Standard rank pagination endpoint
+      `https://vjudge.net/contest/rank/single?contestId=${cid}&language=0&page=1&pageSize=2000`,
+      // Alternative rank endpoint
+      `https://vjudge.net/contest/${cid}/rank/single`,
+      // Overview JSON which sometimes includes participants
+      `https://vjudge.net/contest/overview/${cid}`,
+    ];
+
+    for(const ep of jsonEndpoints){
+      if(data) break;
+      try {
+        data = await fetchJsonEndpoint(ep);
+        if(data && data.length > 0){ tried.push(`API:${ep.split('?')[0].split('/').pop()}`); break; }
+        else data = null;
+      } catch(e){ data = null; }
+    }
+
+    // ── Strategy 2: Proxy full HTML page, extract embedded pageModel JSON ──
+    if(!data){
+      try {
+        data = await fetchPageModel(cid);
+        if(data && data.length > 0) tried.push('pageModel');
+        else data = null;
+      } catch(e){ data = null; }
+    }
+
+    // ── Strategy 3: Proxy HTML + DOM parse rank table (server-side rendered) ──
+    if(!data){
+      try {
+        data = await fetchAndParseDOM(cid);
+        if(data && data.length > 0) tried.push('DOM');
+        else data = null;
+      } catch(e){ data = null; }
+    }
+
+    spin.classList.add('hidden');
+
+    if(data && data.length > 0){
+      setStatus(i,'ok',`${data.length} participants`);
+      toast(`Contest ${cid}: loaded ${data.length} participants.`,'ok');
+      storeContestData(i, cid, data);
+      // Switch to manual mode and show the data so user can review/edit
+      switchToManualWithData(i, cid, data);
+    } else {
+      setStatus(i,'err','Auto-fetch failed — use Manual Paste');
+      toast(`Could not auto-fetch contest ${cid}. VJudge may require login or blocks proxies. Switch to Manual Paste.`,'err');
+    }
+  }
+
+  // ── Fetch a JSON API endpoint through both proxies ──
+  async function fetchJsonEndpoint(apiUrl){
+    // Try allorigins
+    try {
+      const proxied = PROXY + encodeURIComponent(apiUrl);
+      const res = await fetch(proxied, {signal: AbortSignal.timeout(10000)});
+      if(res.ok){
+        const json = await res.json();
+        const content = json.contents;
+        const parsed = parseVJudgeJson(content);
+        if(parsed && parsed.length > 0) return parsed;
+      }
+    } catch(e){}
+
+    // Try corsproxy
+    try {
+      const proxied = PROXY2 + encodeURIComponent(apiUrl);
+      const res = await fetch(proxied, {signal: AbortSignal.timeout(10000)});
+      if(res.ok){
+        const text = await res.text();
+        const parsed = parseVJudgeJson(text);
+        if(parsed && parsed.length > 0) return parsed;
+      }
+    } catch(e){}
+
+    return null;
+  }
+
+  // ── Parse various VJudge JSON response shapes ──
+  function parseVJudgeJson(raw){
+    if(!raw) return null;
+    let obj;
+    try { obj = JSON.parse(raw); } catch(e){ return null; }
+
+    // Shape A: { data: [{rank, userName, acceptedNumber}, ...] }
+    if(obj.data && Array.isArray(obj.data)){
+      return obj.data.map((p,i)=>({
+        handle: p.userName || p.username || p.handle || p.nickName || `user_${i+1}`,
+        rank:   parseInt(p.rank) || i+1,
+        solved: parseInt(p.acceptedNumber ?? p.solved ?? p.ac ?? 0)
+      })).filter(p=>p.handle);
+    }
+
+    // Shape B: top-level array  [{...}, ...]
+    if(Array.isArray(obj) && obj.length > 0){
+      const first = obj[0];
+      if(first.userName || first.username || first.handle || first.rank !== undefined){
+        return obj.map((p,i)=>({
+          handle: p.userName || p.username || p.handle || p.nickName || `user_${i+1}`,
+          rank:   parseInt(p.rank) || i+1,
+          solved: parseInt(p.acceptedNumber ?? p.solved ?? p.ac ?? 0)
+        })).filter(p=>p.handle);
+      }
+      // Shape C: array of arrays  [[handle, rank, solved], ...]
+      if(Array.isArray(first)){
+        return obj.map((p,i)=>({
+          handle: String(p[0] || `user_${i+1}`),
+          rank:   parseInt(p[1]) || i+1,
+          solved: parseInt(p[2]) || 0
+        })).filter(p=>p.handle);
+      }
+    }
+
+    // Shape D: { participants: [...] }  or  { rankData: [...] }
+    const list = obj.participants || obj.rankData || obj.rank || obj.rankList;
+    if(Array.isArray(list) && list.length > 0){
+      return list.map((p,i)=>({
+        handle: p.userName || p.username || p.handle || p.nickName || `user_${i+1}`,
+        rank:   parseInt(p.rank) || i+1,
+        solved: parseInt(p.acceptedNumber ?? p.solved ?? p.ac ?? 0)
+      })).filter(p=>p.handle);
+    }
+
+    return null;
+  }
+
+  // ── Fetch page HTML and extract embedded pageModel / bsy.contest.init JSON ──
+  async function fetchPageModel(cid){
+    const pageUrl = `https://vjudge.net/contest/${cid}`;
+    let html = null;
+
+    try {
+      const res = await fetch(PROXY + encodeURIComponent(pageUrl), {signal: AbortSignal.timeout(12000)});
+      if(res.ok){ const j = await res.json(); html = j.contents; }
+    } catch(e){}
+
+    if(!html){
+      try {
+        const res = await fetch(PROXY2 + encodeURIComponent(pageUrl), {signal: AbortSignal.timeout(12000)});
+        if(res.ok) html = await res.text();
+      } catch(e){}
+    }
+
+    if(!html) return null;
+
+    // Pattern 1: var pageModel = {...}
+    const pm = html.match(/var\s+pageModel\s*=\s*(\{[\s\S]*?\})\s*;?\s*(?:var\s|bsy\.|<\/script>)/);
+    if(pm){ try { return parseVJudgeJson(pm[1]); } catch(e){} }
+
+    // Pattern 2: bsy.contest.init({...})
+    const bsy = html.match(/bsy\.contest\.init\((\{[\s\S]*?\})\)/);
+    if(bsy){ try { return parseVJudgeJson(bsy[1]); } catch(e){} }
+
+    // Pattern 3: window.__INITIAL_STATE__ = {...}
+    const ws = html.match(/__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\})\s*;/);
+    if(ws){ try { return parseVJudgeJson(ws[1]); } catch(e){} }
+
+    return null;
+  }
+
+  // ── Fetch page HTML + parse #contest-rank-table DOM ──
+  async function fetchAndParseDOM(cid){
+    const pageUrl = `https://vjudge.net/contest/${cid}`;
+    let html = null;
+
+    try {
+      const res = await fetch(PROXY + encodeURIComponent(pageUrl), {signal: AbortSignal.timeout(12000)});
+      if(res.ok){ const j = await res.json(); html = j.contents; }
+    } catch(e){}
+
+    if(!html) return null;
+    return parseRankTableDOM(html);
+  }
+
+  // Hidden storage for fetched data per contest index
+  const fetchedData = {};
+  function storeContestData(i, cid, participants){
+    fetchedData[i] = { cid, participants };
+  }
+
+  // ── DOM-based parser using the exact VJudge rank table structure ──
+  // Structure from DevTools:
+  //   table#contest-rank-table > tbody > tr[data-u][data-c]
+  //     td.rank.meta          → rank number text
+  //     td.team.meta          → a[href="/user/Handle"] title="Handle FullName"
+  //     td.solved.meta        → span → solved count
+  //     td.penalty.meta       → span.minute → penalty minutes
+  function parseRankTableDOM(html){
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    // Primary: table with id="contest-rank-table"
+    let rows = Array.from(doc.querySelectorAll('#contest-rank-table tbody tr'));
+
+    // Fallback: any table with rank/team/solved columns
+    if(rows.length === 0){
+      rows = Array.from(doc.querySelectorAll('table tbody tr[data-u], table tbody tr[data-c]'));
+    }
+    if(rows.length === 0) return null;
+
+    const result = [];
+    let autoRank = 1;
+
+    rows.forEach(tr => {
+      // ── Rank ──
+      // td.rank or td.rank.meta
+      const rankTd = tr.querySelector('td.rank');
+      let rank = rankTd ? parseInt(rankTd.textContent.trim()) : NaN;
+      if(isNaN(rank) || rank <= 0) rank = autoRank;
+
+      // ── Handle ──
+      // td.team a[href^="/user/"] — title attr has "Handle FullName"
+      const teamTd = tr.querySelector('td.team');
+      let handle = '';
+      if(teamTd){
+        const link = teamTd.querySelector('a[href*="/user/"]');
+        if(link){
+          // title is "Handle FullName" — take first token as handle
+          const title = (link.getAttribute('title') || '').trim();
+          handle = title.split(/\s+/)[0] || '';
+          // fallback to href last segment
+          if(!handle){
+            const href = link.getAttribute('href') || '';
+            handle = href.split('/').pop() || '';
+          }
+          // fallback to link text
+          if(!handle) handle = link.textContent.trim();
+        }
+        // fallback: any link in the cell
+        if(!handle){
+          const anyLink = teamTd.querySelector('a');
+          if(anyLink) handle = anyLink.textContent.trim();
+        }
+        // last resort: cell text content (strip whitespace/icons)
+        if(!handle){
+          handle = teamTd.textContent.replace(/\s+/g,' ').trim().split(' ')[0];
+        }
+      }
+      // Also try data-u attribute on the row as a final fallback
+      if(!handle) handle = tr.getAttribute('data-u') || `user_${autoRank}`;
+
+      // ── Solved ──
+      // td.solved span, or td.solved text
+      const solvedTd = tr.querySelector('td.solved');
+      let solved = 0;
+      if(solvedTd){
+        const span = solvedTd.querySelector('span');
+        solved = parseInt((span || solvedTd).textContent.trim()) || 0;
       }
 
-      users[user.handle].total += CP;
-      users[user.handle].count += 1;
+      if(handle) {
+        result.push({ handle, rank, solved });
+        autoRank++;
+      }
     });
-  });
 
-  const result = Object.entries(users).map(([handle, data]) => {
-    let bonus = 0;
-    if (data.count == n) bonus = 0.5 * n;
+    return result.length > 0 ? result : null;
+  }
 
-    return {
-      handle,
-      score: data.total + bonus
-    };
-  });
+  // ════════════════════════════════════════════════
+  //  PARSE MANUAL CSV
+  // ════════════════════════════════════════════════
+  function parseCSV(raw){
+    const lines = raw.trim().split('\n').filter(l=>l.trim());
+    const result = [];
+    for(let line of lines){
+      const parts = line.split(',').map(s=>s.trim());
+      if(parts.length < 2) continue;
+      // skip header if present
+      if(parts[0].toLowerCase()==='handle' || isNaN(parseInt(parts[1]))) continue;
+      const handle = parts[0];
+      const rank = parseInt(parts[1]) || 0;
+      const solved = parseInt(parts[2]) || 0;
+      if(handle) result.push({handle, rank, solved});
+    }
+    return result;
+  }
 
-  result.sort((a, b) => b.score - a.score);
+  // ════════════════════════════════════════════════
+  //  COLLECT ALL CONTEST DATA
+  // ════════════════════════════════════════════════
+  async function collectData(){
+    const contests = [];
+    for(let i=0;i<numContests;i++){
+      const isExt    = document.getElementById(`mode-ext-${i}`)?.classList.contains('active');
+      const isManual = document.getElementById(`mode-manual-${i}`)?.classList.contains('active');
 
-  let html = `<table class="table-auto w-full border">
-    <tr class="bg-gray-200">
-      <th class="border p-2">Rank</th>
-      <th class="border p-2">Handle</th>
-      <th class="border p-2">Final Score</th>
-    </tr>`;
+      if(isExt){
+        if(!fetchedData[i]){
+          toast(`Contest ${i+1} (Extension): No data received. Open VJudge rank page and click the extension icon.`, 'err');
+          return null;
+        }
+        const nameEl = document.getElementById(`ext-name-${i}`);
+        const name   = (nameEl && nameEl.value.trim()) || fetchedData[i].cid || `Contest ${i+1}`;
+        contests.push({ id: fetchedData[i].cid, name, participants: fetchedData[i].participants });
 
-  result.forEach((u, i) => {
-    html += `<tr>
-      <td class="border p-2">${i+1}</td>
-      <td class="border p-2">${u.handle}</td>
-      <td class="border p-2">${u.score.toFixed(3)}</td>
-    </tr>`;
-  });
+      } else if(isManual){
+        const csvEl  = document.getElementById(`csv-${i}`);
+        const nameEl = document.getElementById(`cname-manual-${i}`);
+        const raw    = csvEl ? csvEl.value.trim() : '';
+        if(!raw){ toast(`Contest ${i+1}: No data pasted.`,'err'); return null; }
+        const participants = parseCSV(raw);
+        if(participants.length===0){ toast(`Contest ${i+1}: Could not parse CSV.`,'err'); return null; }
+        const name = (nameEl && nameEl.value.trim()) || `Contest ${i+1}`;
+        contests.push({ id: `C${i+1}`, name, participants });
 
-  html += '</table>';
+      } else {
+        // Auto-fetch mode
+        if(fetchedData[i]){
+          const cnameEl = document.getElementById(`cname-${i}`);
+          const name = (cnameEl && cnameEl.value.trim()) || `Contest ${fetchedData[i].cid}`;
+          contests.push({ id: fetchedData[i].cid, name, participants: fetchedData[i].participants });
+        } else {
+          const cidEl = document.getElementById(`cid-${i}`);
+          const raw   = cidEl ? cidEl.value.trim() : '';
+          const cid   = extractContestId(raw);
+          if(!cid){ toast(`Contest ${i+1}: Enter a URL/ID or switch mode.`,'err'); return null; }
 
-  document.getElementById('output').innerHTML = html;
-}
-</script>
+          document.getElementById('loading-indicator').classList.remove('hidden');
+          setStatus(i,'wait','Fetching…');
 
+          let data = null;
+          const eps = [
+            `https://vjudge.net/contest/rank/single?contestId=${cid}&language=0&page=1&pageSize=2000`,
+            `https://vjudge.net/contest/${cid}/rank/single`,
+          ];
+          for(const ep of eps){ if(data) break; try { data = await fetchJsonEndpoint(ep); } catch(e){} }
+          if(!data){ try { data = await fetchPageModel(cid); } catch(e){} }
+          if(!data){ try { data = await fetchAndParseDOM(cid); } catch(e){} }
+
+          document.getElementById('loading-indicator').classList.add('hidden');
+
+          if(!data || data.length===0){
+            setStatus(i,'err','Fetch failed');
+            toast(`Contest ${cid}: Could not auto-fetch. Use extension or Manual Paste.`,'err');
+            return null;
+          }
+          setStatus(i,'ok',`${data.length} participants`);
+          const cnameEl = document.getElementById(`cname-${i}`);
+          const name = (cnameEl && cnameEl.value.trim()) || `Contest ${cid}`;
+          contests.push({ id: cid, name, participants: data });
+          storeContestData(i, cid, data);
+        }
+      }
+    }
+    return contests;
+  }
+
+  // ════════════════════════════════════════════════
+  //  SCORE FORMULAS
+  // ════════════════════════════════════════════════
+  function calcBP(rank){ return 4.00 * Math.pow(0.98, rank - 1); }
+  function calcSP(s, smax){ return smax > 0 ? Math.sqrt(s / smax) : 0; }
+  function calcPP(xi, xmin, xmax){
+    if(xmax === xmin) return 0.1;
+    return Math.max((xi - xmin) / (xmax - xmin), 0.1);
+  }
+  function calcCP(bp, sp, pp){ return (bp * sp) + pp; }
+
+  function computeContestScores(contest, pp){
+    const smax = Math.max(...contest.participants.map(p=>p.solved));
+    const rows = contest.participants.map(p=>{
+      const bp = calcBP(p.rank);
+      const sp = calcSP(p.solved, smax);
+      const cp = calcCP(bp, sp, pp);
+      return { ...p, BP: bp, SP: sp, PP: pp, CP: cp };
+    });
+    return { ...contest, rows, smax, xi: contest.participants.length };
+  }
+
+  // ════════════════════════════════════════════════
+  //  MAIN CALCULATE
+  // ════════════════════════════════════════════════
+  async function calculateAll(){
+    const btn = document.getElementById('calc-btn');
+    btn.disabled = true;
+
+    const contests = await collectData();
+    if(!contests){ btn.disabled = false; return; }
+    if(contests.length === 0){ toast('No contest data found.','err'); btn.disabled = false; return; }
+
+    allContestData = contests;
+
+    // compute xMin / xMax across all contests
+    const participantCounts = contests.map(c=>c.participants.length);
+    xMin = Math.min(...participantCounts);
+    xMax = Math.max(...participantCounts);
+
+    // compute per-contest results
+    allContestResults = contests.map(c=>{
+      const pp = calcPP(c.participants.length, xMin, xMax);
+      return computeContestScores(c, pp);
+    });
+
+    btn.disabled = false;
+    renderResults();
+    showStep(3);
+    toast('Rankings calculated successfully!','ok');
+  }
+
+  // ════════════════════════════════════════════════
+  //  RENDER PER-CONTEST TABLES
+  // ════════════════════════════════════════════════
+  function renderResults(){
+    const container = document.getElementById('contest-results');
+    container.innerHTML = '';
+
+    allContestResults.forEach((contest,ci)=>{
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.style.marginBottom = '1.5rem';
+
+      card.innerHTML = `
+        <div class="contest-card-header">
+          <div class="contest-card-title">
+            <span class="contest-tag"># ${ci+1}</span>
+            <h2 style="font-size:1.1rem;font-weight:700;color:#fff">${escHtml(contest.name)}</h2>
+            ${contest.id ? `<a href="https://vjudge.net/contest/${escHtml(contest.id)}#rank" target="_blank" style="font-size:.72rem;font-family:'JetBrains Mono',monospace;color:var(--accent);text-decoration:none;opacity:.7;hover:opacity:1">↗ vjudge/${escHtml(contest.id)}</a>` : ''}
+          </div>
+          <div class="stat-chips">
+            <div class="chip">Participants: <b>${contest.xi}</b></div>
+            <div class="chip">Max Solved: <b>${contest.smax}</b></div>
+            <div class="chip">PP: <b>${fmt(contest.rows[0]?.PP)}</b></div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Handle</th>
+                <th>Recording Link</th>
+                <th>Rank</th>
+                <th>Solved</th>
+                <th>BP</th>
+                <th>SP</th>
+                <th>PP</th>
+                <th>CP</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-c${ci}"></tbody>
+          </table>
+        </div>
+      `;
+      container.appendChild(card);
+
+      const tbody = document.getElementById(`tbody-c${ci}`);
+      const sorted = [...contest.rows].sort((a,b)=>a.rank-b.rank);
+      sorted.forEach((row,ri)=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="text-muted">${ri+1}</td>
+          <td style="font-weight:600;color:#fff">${escHtml(row.handle)}</td>
+          <td><input class="rec-input" data-ci="${ci}" data-handle="${escHtml(row.handle)}" placeholder="paste link…" /></td>
+          <td class="text-accent">${row.rank}</td>
+          <td>${row.solved}</td>
+          <td class="text-green">${fmt(row.BP)}</td>
+          <td>${fmt(row.SP)}</td>
+          <td>${fmt(row.PP)}</td>
+          <td style="font-weight:700;color:#fff">${fmt(row.CP)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    });
+
+    // Render final leaderboard
+    renderFinalTable();
+  }
+
+  // ════════════════════════════════════════════════
+  //  RENDER FINAL LEADERBOARD
+  // ════════════════════════════════════════════════
+  function renderFinalTable(){
+    const n = allContestResults.length;
+
+    // Build map: handle -> {cp: [c0, c1, ...], contestCount}
+    const map = new Map();
+
+    allContestResults.forEach((contest, ci)=>{
+      contest.rows.forEach(row=>{
+        if(!map.has(row.handle)){
+          map.set(row.handle, { handle: row.handle, cps: new Array(n).fill(0), contestCount: 0 });
+        }
+        const entry = map.get(row.handle);
+        entry.cps[ci] = row.CP;
+        entry.contestCount++;
+      });
+    });
+
+    // Compute final scores
+    const finalRows = [];
+    map.forEach(entry=>{
+      const sumCP = entry.cps.reduce((a,b)=>a+b, 0);
+      const bonus = entry.contestCount === n ? 0.5 * n : 0;
+      const finalScore = sumCP + bonus;
+      finalRows.push({ ...entry, sumCP, bonus, finalScore });
+    });
+
+    finalRows.sort((a,b)=>b.finalScore - a.finalScore);
+
+    // Max final score for bar scaling
+    const maxScore = finalRows[0]?.finalScore || 1;
+
+    // Build header
+    const thead = document.getElementById('final-thead');
+    const tbody = document.getElementById('final-tbody');
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+
+    const headRow = document.createElement('tr');
+    headRow.innerHTML = `
+      <th>Rank</th>
+      <th>Handle</th>
+      ${allContestResults.map((c,i)=>`<th>C${i+1} CP</th>`).join('')}
+      <th>Sum CP</th>
+      <th>Bonus</th>
+      <th>Final Score</th>
+    `;
+    thead.appendChild(headRow);
+
+    finalRows.forEach((row,i)=>{
+      const tr = document.createElement('tr');
+      if(i===0) tr.className='highlight-row-1';
+      else if(i===1) tr.className='highlight-row-2';
+      else if(i===2) tr.className='highlight-row-3';
+
+      const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+      const barW = Math.max(8, Math.round((row.finalScore/maxScore)*80));
+
+      tr.innerHTML = `
+        <td class="mono" style="color:var(--muted)">${medal||''} ${i+1}</td>
+        <td style="font-weight:700;color:#fff">${escHtml(row.handle)}</td>
+        ${row.cps.map(cp=>`<td class="mono" style="color:var(--text)">${fmt(cp)}</td>`).join('')}
+        <td class="mono text-green">${fmt(row.sumCP)}</td>
+        <td class="mono" style="color:var(--gold)">${row.bonus > 0 ? '+'+fmt(row.bonus) : '—'}</td>
+        <td>
+          <div class="score-bar-wrap">
+            <span style="font-weight:800;color:#fff;font-family:'JetBrains Mono',monospace">${fmt(row.finalScore)}</span>
+            <div class="score-bar" style="width:${barW}px"></div>
+          </div>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ════════════════════════════════════════════════
+  //  EXCEL EXPORT (multi-sheet .xlsx via SheetJS)
+  // ════════════════════════════════════════════════
+  // ── Collect all recording links keyed by contestIndex → handle → url ──
+  function collectRecordingLinks(){
+    const links = {}; // links[ci][handle] = url
+    document.querySelectorAll('input.rec-input').forEach(input => {
+      const ci     = input.dataset.ci;
+      const handle = input.dataset.handle;
+      const val    = input.value.trim();
+      if(ci === undefined || !handle) return;
+      if(!links[ci]) links[ci] = {};
+      links[ci][handle] = val;
+    });
+    return links;
+  }
+
+  function exportExcel(){
+    if(!window.XLSX){ toast('SheetJS not loaded yet, please wait.','err'); return; }
+    if(!allContestResults.length){ toast('No data to export.','err'); return; }
+
+    const wb   = XLSX.utils.book_new();
+    const n    = allContestResults.length;
+    const recs = collectRecordingLinks(); // recording links per contest
+
+    // ── Sheet per contest ──
+    allContestResults.forEach((contest, ci) => {
+      const sheetData = [];
+
+      // Check if this contest has any recording links
+      const contestLinks = recs[ci] || {};
+      const hasLinks = Object.values(contestLinks).some(v => v.length > 0);
+
+      // Title row & header
+      if(hasLinks){
+        sheetData.push([`Contest ${ci+1}: ${contest.name}`, '', '', '', '', '', '', '', '']);
+        sheetData.push(['Handle','Recording Link','Rank','Solved','BP','SP','PP','CP']);
+      } else {
+        sheetData.push([`Contest ${ci+1}: ${contest.name}`, '', '', '', '', '', '', '']);
+        sheetData.push(['Handle','Rank','Solved','BP','SP','PP','CP']);
+      }
+
+      const sorted = [...contest.rows].sort((a,b) => a.rank - b.rank);
+      sorted.forEach(row => {
+        const link = contestLinks[row.handle] || '';
+        if(hasLinks){
+          sheetData.push([
+            row.handle, link,
+            row.rank, row.solved,
+            parseFloat(row.BP.toFixed(6)),
+            parseFloat(row.SP.toFixed(6)),
+            parseFloat(row.PP.toFixed(6)),
+            parseFloat(row.CP.toFixed(6)),
+          ]);
+        } else {
+          sheetData.push([
+            row.handle,
+            row.rank, row.solved,
+            parseFloat(row.BP.toFixed(6)),
+            parseFloat(row.SP.toFixed(6)),
+            parseFloat(row.PP.toFixed(6)),
+            parseFloat(row.CP.toFixed(6)),
+          ]);
+        }
+      });
+
+      // Stats footer
+      sheetData.push([]);
+      sheetData.push(['Participants', contest.xi, 'Max Solved', contest.smax, 'PP (shared)', parseFloat((contest.rows[0]?.PP||0).toFixed(6))]);
+
+      const ws = XLSX.utils.aoa_to_sheet(sheetData);
+      if(hasLinks){
+        ws['!cols'] = [{wch:22},{wch:36},{wch:7},{wch:9},{wch:12},{wch:12},{wch:12},{wch:12}];
+        styleHeader(ws, 1, 8);
+      } else {
+        ws['!cols'] = [{wch:22},{wch:7},{wch:9},{wch:12},{wch:12},{wch:12},{wch:12}];
+        styleHeader(ws, 1, 7);
+      }
+
+      const safeSheetName = `C${ci+1}_${contest.name}`.replace(/[\\\/\?\*\[\]:]/g,'_').slice(0,31);
+      XLSX.utils.book_append_sheet(wb, ws, safeSheetName);
+    });
+
+    // ── Final Leaderboard sheet ──
+    const map = new Map();
+    allContestResults.forEach((contest, ci) => {
+      contest.rows.forEach(row => {
+        if(!map.has(row.handle)) map.set(row.handle, { handle: row.handle, cps: new Array(n).fill(0), contestCount: 0 });
+        const e = map.get(row.handle);
+        e.cps[ci] = row.CP;
+        e.contestCount++;
+      });
+    });
+
+    const finalRows = [];
+    map.forEach(entry => {
+      const sumCP      = entry.cps.reduce((a,b) => a+b, 0);
+      const bonus      = entry.contestCount === n ? 0.5 * n : 0;
+      const finalScore = sumCP + bonus;
+      finalRows.push({ ...entry, sumCP, bonus, finalScore });
+    });
+    finalRows.sort((a,b) => b.finalScore - a.finalScore);
+
+    const contestHeaders = allContestResults.map((c,i) => `C${i+1}: ${c.name} CP`);
+    const lbData = [];
+    lbData.push(['Final Leaderboard — VJudge Rank Merger']);
+    lbData.push(['']);
+    lbData.push([
+      'Rank', 'Handle',
+      ...contestHeaders,
+      'Sum CP', 'Bonus', 'Final Score', 'Participated In'
+    ]);
+
+    finalRows.forEach((row, i) => {
+      lbData.push([
+        i+1,
+        row.handle,
+        ...row.cps.map(c => parseFloat(c.toFixed(6))),
+        parseFloat(row.sumCP.toFixed(6)),
+        parseFloat(row.bonus.toFixed(6)),
+        parseFloat(row.finalScore.toFixed(6)),
+        `${row.contestCount} / ${n}`,
+      ]);
+    });
+
+    // Summary block
+    lbData.push([]);
+    lbData.push(['Formula Notes']);
+    lbData.push(['BP = 4.00 × 0.98^(rank−1)']);
+    lbData.push(['SP = √(Solved / MaxSolved)']);
+    lbData.push(['PP = max((Xi−Xmin)/(Xmax−Xmin), 0.1)']);
+    lbData.push(['CP = (BP × SP) + PP']);
+    lbData.push([`Bonus = 0.5 × ${n}  (only if present in ALL ${n} contests)`]);
+    lbData.push(['Final Score = ΣCP + Bonus']);
+
+    const lbWs = XLSX.utils.aoa_to_sheet(lbData);
+    const numCols = 3 + n;
+    lbWs['!cols'] = [
+      {wch:7}, {wch:22},
+      ...allContestResults.map(() => ({wch:18})),
+      {wch:12},{wch:10},{wch:13},{wch:16}
+    ];
+    styleHeader(lbWs, 2, numCols);
+
+    XLSX.utils.book_append_sheet(wb, lbWs, 'Final Leaderboard');
+
+    // Move Final Leaderboard sheet to front
+    const sheets = wb.SheetNames;
+    const lbIdx = sheets.indexOf('Final Leaderboard');
+    if(lbIdx > 0){
+      sheets.splice(lbIdx, 1);
+      sheets.unshift('Final Leaderboard');
+    }
+
+    XLSX.writeFile(wb, 'vjudge_merged_ranking.xlsx');
+    toast('Excel file exported successfully!','ok');
+  }
+
+  // Apply bold + background fill to a header row in an XLSX sheet
+  function styleHeader(ws, rowIdx, numCols){
+    try {
+      for(let c = 0; c < numCols; c++){
+        const cellAddr = XLSX.utils.encode_cell({r: rowIdx, c});
+        if(!ws[cellAddr]) continue;
+        ws[cellAddr].s = {
+          font: { bold: true, color: { rgb: '000000' } },
+          fill: { fgColor: { rgb: '00B4D8' }, patternType: 'solid' },
+          alignment: { horizontal: 'center' }
+        };
+      }
+    } catch(e){ /* style not critical */ }
+  }
+
+  // ════════════════════════════════════════════════
+  //  UTILS
+  // ════════════════════════════════════════════════
+  function fmt(n){ return typeof n==='number' ? n.toFixed(4) : '—'; }
+  function fmtRaw(n){ return typeof n==='number' ? n.toFixed(4) : '0.0000'; }
+  function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function toast(msg, type='info'){
+    const c=document.getElementById('toast-container');
+    const div=document.createElement('div');
+    div.className=`toast toast-${type}`;
+    div.textContent=msg;
+    c.appendChild(div);
+    setTimeout(()=>div.remove(),4000);
+  }
+  </script>
 </body>
 </html>
