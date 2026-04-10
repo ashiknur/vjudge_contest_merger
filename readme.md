@@ -60,7 +60,7 @@ Each contest slot has two modes — pick one:
 1. In the merger app, leave the slot on **🧩 Extension** (default)
 2. In a new tab, open the VJudge contest rank page:
    ```
-   https://vjudge.net/contest/781164#rank
+   https://vjudge.net/contest/{contest_id}#rank
    ```
 3. Wait for the rank table to fully load
 4. Click the **VJudge Rank Extractor** icon in your Chrome toolbar
